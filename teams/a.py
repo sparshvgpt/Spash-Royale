@@ -4,7 +4,7 @@ from teams.helper_function import Troops, Utils
 team_name = "Spash Royale"
 troops = [
     Troops.wizard, Troops.minion, Troops.archer, Troops.musketeer,
-    Troops.dragon, Troops.skeleton, Troops.valkyrie, Troops.giant
+    Troops.dragon, Troops.skeleton, Troops.valkyrie, Troops.prince
 ]
 deploy_list = Troops([])
 team_signal = ""
@@ -42,10 +42,10 @@ def logic(arena_data: dict):
             team_signal = ",".join(parts)[:200]
 
     # 2. End-Game All-Out Push (Last 10% of Game)
-    if timer > 1500:
+    if timer > 150:
         # Aggressively push every available unit
-        if "Giant" in my_tower.deployable_troops and elixir >= troops_data["Giant"].elixir:
-            deploy_list.deploy_giant(offense_position(my_tower.position))
+        if "Prince" in my_tower.deployable_troops and elixir >= troops_data["Prince"].elixir:
+            deploy_list.deploy_prince(offense_position(my_tower.position))
         if "Dragon" in my_tower.deployable_troops and elixir >= troops_data["Dragon"].elixir:
             deploy_list.deploy_dragon(offense_position(my_tower.position))
         if "Minion" in my_tower.deployable_troops and elixir >= troops_data["Minion"].elixir:
@@ -74,8 +74,8 @@ def logic(arena_data: dict):
     # 4. High-Elixir Offensive Push: Mixed Attack
     if elixir >= 8:
         # Deploy a coordinated push using heavy and supporting units
-        if "Giant" in my_tower.deployable_troops and elixir >= troops_data["Giant"].elixir:
-            deploy_list.deploy_giant(offense_position(my_tower.position))
+        if "Prince" in my_tower.deployable_troops and elixir >= troops_data["Prince"].elixir:
+            deploy_list.deploy_prince(offense_position(my_tower.position))
         if "Dragon" in my_tower.deployable_troops and elixir >= troops_data["Dragon"].elixir:
             deploy_list.deploy_dragon(offense_position(my_tower.position))
         if "Minion" in my_tower.deployable_troops and elixir >= troops_data["Minion"].elixir:
@@ -110,15 +110,15 @@ def defense_position(tower_pos):
     """
     Returns a slightly randomized position around our tower for defense.
     """
-    x = tower_pos[0] + random.randint(-4, 4)
-    y = tower_pos[1] + random.randint(-4, 4)
-    return (max(0, min(49, x)), max(0, min(49, y)))
+    x = tower_pos[0] + random.randint(-8, 8)
+    y = tower_pos[1] + random.randint(0, 10)
+    return (max(-49, min(49, x)), max(0, min(49, y)))
 
 def offense_position(tower_pos):
     """
     Returns a forward position to pressure the enemy tower,
     with added randomness to avoid predictability.
     """
-    x = tower_pos[0] + random.randint(6, 10)
-    y = tower_pos[1] + random.randint(-3, 3)
-    return (max(0, min(49, x)), max(0, min(49, y)))
+    x = tower_pos[0] + random.randint(-15, 15)
+    y = tower_pos[1] + random.randint(0, 3)
+    return (max(-49, min(49, x)), max(0, min(49, y)))
