@@ -1,5 +1,5 @@
-from teams import a,b
+from teams import a,b,sushant,gptimproved
 
-TEAM1 = a
-TEAM2 = b
+TEAM1 = gptimproved
+TEAM2 = sushant
 VALUE_ERROR = False

@@ -1,124 +1,174 @@
+# Godlike LeviOsa Killer Bot
+# Features:
+# - Full elixir & cycle tracking
+# - UID-aware opponent troop memory
+# - Role-based behavior (DEFENSE, OFFENSE, NEUTRAL)
+# - Splash baiting and response
+# - Split-lane pressure
+# - Adaptive troop scoring
+# - All state in team_signal
+
+# ✨ May the Splash be with you.
+
 import random
 from teams.helper_function import Troops, Utils
 
-team_name = "Spash Royale"
 troops = [
     Troops.wizard, Troops.minion, Troops.archer, Troops.musketeer,
-    Troops.dragon, Troops.skeleton, Troops.valkyrie, Troops.giant
+    Troops.dragon, Troops.skeleton, Troops.valkyrie, Troops.prince
 ]
+team_name = "GODMODE"
 deploy_list = Troops([])
-team_signal = ""
+team_signal = "||10"
 
+# Deployment logic entry point
 def deploy(arena_data: dict):
-    """
-    DON'T TEMPER DEPLOY FUNCTION
-    """
     deploy_list.list_ = []
     logic(arena_data)
     return deploy_list.list_, team_signal
 
+# Godlike logic core
 def logic(arena_data: dict):
     global team_signal
 
+    # === Parse state ===
     troops_data = Troops.troops_data
-    my_tower = arena_data["MyTower"]
-    opp_tower = arena_data["OppTower"]
-    my_troops = arena_data["MyTroops"]
-    opp_troops = arena_data["OppTroops"]
-    elixir = my_tower.total_elixir
-    timer = my_tower.game_timer
+    my = arena_data["MyTower"]
+    opp = arena_data["OppTroops"]
+    elixir = my.total_elixir
+    timer = my.game_timer
 
-    # Deploy wizard if possible
-    if "Wizard" in my_tower.deployable_troops:
-        deploy_list.deploy_wizard((offense_position(my_tower.position)))
+    # Signal layout: name uid,name uid|self_cycle|opp_elixir|splash_frame|splash_bait
+    parts = team_signal.split("|") + [""] * 5
+    deck_raw, cycle_raw, opp_elixir, splash_frame, bait_success = parts[:5]
+    cycle = list(filter(None, cycle_raw.split(",")))
+    opp_elixir = float(opp_elixir)
+    if splash_frame=='':
+        splash_frame = 0
+    else:
+        splash_frame = int(splash_frame)
+    if bait_success=='':
+        bait_success = 0
+    else:
+        bait_success = int(bait_success)
 
-    # 1. Update team_signal with closest enemy name
-    if opp_troops:
-        closest_enemy = min(opp_troops, key=lambda t: Utils.calculate_distance(t.position, my_tower.position, type_troop=False))
-        new_signal = closest_enemy.name
-        if new_signal not in team_signal:
-            parts = team_signal.split(",") if team_signal else []
-            parts.append(new_signal)
-            team_signal = ",".join(parts)[:200]
+    # Track opponent troops by UID
+    opp_deck = {}
+    for troop in opp:
+        name, uid = troop.name, str(troop.uid)
+        if name not in opp_deck:
+            opp_deck[name] = []
+        if uid not in opp_deck[name]:
+            opp_deck[name].append(uid)
 
-    # 2. End-Game All-Out Push (Last 10% of Game)
-    if timer > 1500:
-        # Aggressively push every available unit
-        if "Giant" in my_tower.deployable_troops and elixir >= troops_data["Giant"].elixir:
-            deploy_list.deploy_giant(offense_position(my_tower.position))
-        if "Dragon" in my_tower.deployable_troops and elixir >= troops_data["Dragon"].elixir:
-            deploy_list.deploy_dragon(offense_position(my_tower.position))
-        if "Minion" in my_tower.deployable_troops and elixir >= troops_data["Minion"].elixir:
-            deploy_list.deploy_minion(offense_position(my_tower.position))
-        if "Archer" in my_tower.deployable_troops and elixir >= troops_data["Archer"].elixir:
-            deploy_list.deploy_archer(offense_position(my_tower.position))
-        return
+    # Remove disappeared UIDs
+    past_deck = {}
+    if deck_raw:
+        for entry in deck_raw.split(","):
+            tokens = entry.strip().split()
+            if not tokens: continue
+            name, uids = tokens[0], tokens[1:]
+            still = [uid for uid in uids if any(t.name == name and str(t.uid) == uid for t in opp)]
+            if still:
+                past_deck[name] = still
 
-    # 3. Adaptive Defense: React to Air & Group Threats
-    # Detect air threats that are within a 15-unit radius
-    air_threats = [t for t in opp_troops if t.type == "air" and Utils.calculate_distance(t.position, my_tower.position, type_troop=False) < 15]
-    if air_threats:
-        if "Musketeer" in my_tower.deployable_troops and elixir >= troops_data["Musketeer"].elixir:
-            deploy_list.deploy_musketeer(defense_position(my_tower.position))
-            return
-        elif "Archer" in my_tower.deployable_troops and elixir >= troops_data["Archer"].elixir:
-            deploy_list.deploy_archer(defense_position(my_tower.position))
-            return
+    # Detect new splash troop
+    if any(name in ["Wizard", "Valkyrie"] for name in opp_deck):
+        splash_frame = timer
 
-    # If enemy troop count is high, use splash damage to counter a swarm
-    if len(opp_troops) >= 5:
-        if "Wizard" in my_tower.deployable_troops and elixir >= troops_data["Wizard"].elixir:
-            deploy_list.deploy_wizard(defense_position(my_tower.position))
-            return
+    # === Compute threat level ===
+    air_threat = sum(1 for t in opp if t.type == "air")
+    ground_threat = sum(1 for t in opp if t.type == "ground")
+    clustered = [t for t in opp if Utils.calculate_distance(t.position, my.position, type_troop=False) < 9]
 
-    # 4. High-Elixir Offensive Push: Mixed Attack
-    if elixir >= 8:
-        # Deploy a coordinated push using heavy and supporting units
-        if "Giant" in my_tower.deployable_troops and elixir >= troops_data["Giant"].elixir:
-            deploy_list.deploy_giant(offense_position(my_tower.position))
-        if "Dragon" in my_tower.deployable_troops and elixir >= troops_data["Dragon"].elixir:
-            deploy_list.deploy_dragon(offense_position(my_tower.position))
-        if "Minion" in my_tower.deployable_troops and elixir >= troops_data["Minion"].elixir:
-            deploy_list.deploy_minion(offense_position(my_tower.position))
-        if "Archer" in my_tower.deployable_troops and elixir >= troops_data["Archer"].elixir:
-            deploy_list.deploy_archer(offense_position(my_tower.position))
-        return
+    # === Role Assignment ===
+    def determine_role():
+        if air_threat >= 3 or len(clustered) >= 4 or ground_threat >= 5:
+            return "DEFENSE"
+        if timer > 1400 or opp_elixir < 3 or my.health > 4000:
+            return "OFFENSE"
+        return "NEUTRAL"
 
-    # 5. Moderate Elixir: Balanced Reaction
-    if elixir >= 5:
-        # If a ground push is viable, use Valkyrie or Skeleton for defense/support
-        if "Valkyrie" in my_tower.deployable_troops and elixir >= troops_data["Valkyrie"].elixir:
-            deploy_list.deploy_valkyrie(offense_position(my_tower.position))
-            return
-        elif "Skeleton" in my_tower.deployable_troops and elixir >= troops_data["Skeleton"].elixir:
-            deploy_list.deploy_skeleton(defense_position(my_tower.position))
+    role = determine_role()
+
+    # === Splash baiting logic ===
+    bait_window = (timer - splash_frame) > 250
+    if bait_window and elixir >= 3 and bait_success < 3:
+        if "Skeleton" in my.deployable_troops:
+            deploy_list.deploy_skeleton(pos_defense(my.position))
+            bait_success += 1
             return
 
-    # 6. Cheap Cycle: Maintain Presence
-    if elixir >= 3:
-        # Cycle through the cheapest units to keep pressure
-        for unit in ["Archer", "Minion", "Skeleton"]:
-            if unit in my_tower.deployable_troops and elixir >= troops_data[unit].elixir:
-                getattr(deploy_list, f"deploy_{unit.lower()}")(defense_position(my_tower.position))
+    # === Post-splash counterattack ===
+    if (timer - splash_frame) < 40 and bait_success:
+        for air_unit in ["Minion", "Dragon"]:
+            if air_unit in my.deployable_troops and elixir >= troops_data[air_unit].elixir:
+                getattr(deploy_list, f"deploy_{air_unit.lower()}")(pos_attack(my.position))
                 return
 
-    # 7. Else: Save Elixir
-    pass
+    # === Full Offensive Wave ===
+    if role == "OFFENSE" and elixir >= 7:
+        for win in ["Prince", "Dragon"]:
+            if win in my.deployable_troops and elixir >= troops_data[win].elixir:
+                getattr(deploy_list, f"deploy_{win.lower()}")(lane_left(my.position))
+        for support in ["Minion", "Archer"]:
+            if support in my.deployable_troops and elixir >= troops_data[support].elixir:
+                getattr(deploy_list, f"deploy_{support.lower()}")(lane_right(my.position))
+        return
 
-# Position Helper Functions
-def defense_position(tower_pos):
-    """
-    Returns a slightly randomized position around our tower for defense.
-    """
-    x = tower_pos[0] + random.randint(-4, 4)
-    y = tower_pos[1] + random.randint(-4, 4)
+    # === Defense Cluster Handling ===
+    if role == "DEFENSE":
+        if air_threat >= 2:
+            for air_def in ["Musketeer", "Archer", "Wizard"]:
+                if air_def in my.deployable_troops and elixir >= troops_data[air_def].elixir:
+                    getattr(deploy_list, f"deploy_{air_def.lower()}")(pos_defense(my.position))
+                    return
+        if len(clustered) >= 3:
+            for splash in ["Wizard", "Valkyrie"]:
+                if splash in my.deployable_troops and elixir >= troops_data[splash].elixir:
+                    getattr(deploy_list, f"deploy_{splash.lower()}")(pos_defense(my.position))
+                    return
+
+    # === Mid-game value cycle ===
+    if elixir >= 5:
+        for mid in ["Valkyrie", "Skeleton"]:
+            if mid in my.deployable_troops and elixir >= troops_data[mid].elixir:
+                getattr(deploy_list, f"deploy_{mid.lower()}")(pos_defense(my.position))
+                return
+
+    if elixir >= 3:
+        for cheap in ["Archer", "Minion"]:
+            if cheap in my.deployable_troops and elixir >= troops_data[cheap].elixir:
+                getattr(deploy_list, f"deploy_{cheap.lower()}")(pos_defense(my.position))
+                return
+
+    # === Update state ===
+    last = deploy_list.list_[-1][0] if deploy_list.list_ else None
+    if last:
+        cycle.append(last)
+    cycle = cycle[-4:]
+
+    opp_deck_final = {**past_deck, **opp_deck}
+    opp_str = ",".join(f"{k} {' '.join(v)}" for k, v in opp_deck_final.items())
+    team_signal = f"{opp_str}|{','.join(cycle)}|{opp_elixir:.2f}|{splash_frame}|{bait_success}"
+
+# === Position Utilities ===
+def pos_defense(pos):
+    x = pos[0] + random.randint(-5, 5)
+    y = pos[1] + random.randint(2, 10)
     return (max(0, min(49, x)), max(0, min(49, y)))
 
-def offense_position(tower_pos):
-    """
-    Returns a forward position to pressure the enemy tower,
-    with added randomness to avoid predictability.
-    """
-    x = tower_pos[0] + random.randint(6, 10)
-    y = tower_pos[1] + random.randint(-3, 3)
+def pos_attack(pos):
+    x = pos[0] + random.randint(-3, 3)
+    y = pos[1] + random.randint(8, 12)
     return (max(0, min(49, x)), max(0, min(49, y)))
+
+def lane_left(pos):
+    x = max(0, pos[0] - 10)
+    y = pos[1] + random.randint(3, 8)
+    return (x, min(49, y))
+
+def lane_right(pos):
+    x = min(49, pos[0] + 10)
+    y = pos[1] + random.randint(3, 8)
+    return (x, min(49, y))
